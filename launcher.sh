@@ -6,11 +6,17 @@ echo "========================================"
 
 CURRENT_UID=$(id -u)
 
-export GDK_SCALE=3
+# Fix display scaling conflict:
+# GDK_SCALE was previously hardcoded to 3, which caused severe coordinate offsets
+# on X11 and prevented taps on top-right buttons (3-dots menu and >> overflow) from registering.
+export GDK_SCALE=1
+export GDK_DPI_SCALE=1
+
 export GTK_IM_MODULE=Maliit
 export GTK_IM_MODULE_FILE=$PWD/lib/aarch64-linux-gnu/gtk-3.0/3.0.0/immodules/immodules.cache
 export GDK_BACKEND=x11 
 export DISABLE_WAYLAND=1 
+unset WAYLAND_DISPLAY  # Isolate from Wayland to ensure Ozone uses X11 popups cleanly
 export DCONF_PROFILE=/nonexistent
 export XDG_CONFIG_HOME="${HOME:-/home/phablet}/.config/chromiumut.shapa"
 mkdir -p "$XDG_CONFIG_HOME"
@@ -57,7 +63,7 @@ fi
 export PATH=$PWD/bin:$PATH
 echo "PATH updated: $PATH"
 
-# Load optional user configuration for scale, user-agent, or custom flags
+# Load optional user configuration for scale, user-agent, homepage, or custom flags
 CONFIG_FILE="$XDG_CONFIG_HOME/chromiumut.conf"
 if [ -f "$CONFIG_FILE" ]; then
     echo "Loading user config from $CONFIG_FILE"
@@ -84,20 +90,34 @@ if [ -n "$GRID_UNIT_PX" ]; then
     dpioptions="$dpioptions --grid-unit-px=$GRID_UNIT_PX"
 fi
 
-# Browser flags:
-# - Removed --simulate-touch-screen-with-mouse (fixes 3-dots menu crash, popup/dropdown dismissal, and enables copy/cut/paste selection)
-# - Retained --touch-events=enabled for native mobile touchscreen interaction
-# - Removed --disable-frame-rate-limit and --disable-gpu-vsync (fixes excessive battery drain and GPU thermal crashes)
-# - Removed VaapiVideoDecoder (unsupported on ARM64 SOCs, caused GPU crashes on Redmi Note 9 / Poco X3)
-# - Removed invalid/typo flags (--adaboost, --enable-gpu-msemory-buffer-video-frames)
-# - Added --password-store=basic to prevent D-Bus keyring hangs on password fields
-# - Added --test-type to suppress the yellow "--no-sandbox" info banner on mobile screen
-gpuoptions="--no-sandbox --test-type --ignore-gpu-blocklist --use-gl=egl --touch-events=enabled --enable-features=UseSkiaRenderer,OverlayScrollbar,kEnableQuic,OverlayScrollbarFlashAfterAnyScrollUpdate,OverlayScrollbarFlashWhenMouseEnter --enable-smooth-scrolling --disable-low-res-tiling --enable-gpu --enable-gpu-rasterization --enable-zero-copy --font-render-hinting=none --disable-font-subpixel-positioning --enable-oop-rasterization --password-store=basic"
+# UI & Touch fixes:
+# 1. Force Ozone to X11 so menus/popups use native X11 windows in XWayland
+# 2. Use --touch-events=auto instead of forcing enabled (forcing enabled breaks MenuButton/toolbar clicks)
+# 3. Suppress first run screens with --no-first-run --no-default-browser-check
+uioptions="--ozone-platform=x11 --touch-events=auto --no-first-run --no-default-browser-check"
+
+# Hardware Acceleration & GPU flags:
+# - Do NOT force --use-gl=egl on X11, as direct EGL creation on X11 windows fails on mobile drivers
+#   and forces a fallback to SwiftShader (CPU rendering). Letting Chromium auto-negotiate or use ANGLE
+#   enables real hardware acceleration on Mesa/libhybris.
+# - Force-enable GPU rasterization, zero-copy, and native GPU memory buffers.
+gpuoptions="--no-sandbox --test-type --ignore-gpu-blocklist --enable-gpu-rasterization --enable-zero-copy --enable-native-gpu-memory-buffers --enable-features=UseSkiaRenderer,CanvasOopRasterization,AcceleratedVideoDecodeLinuxGL,AcceleratedVideoDecodeLinuxZeroCopyGL,AcceleratedVideoEncoder,OverlayScrollbar,kEnableQuic,OverlayScrollbarFlashAfterAnyScrollUpdate,OverlayScrollbarFlashWhenMouseEnter --enable-smooth-scrolling --disable-low-res-tiling --enable-oop-rasterization --password-store=basic"
+
+# Custom GL backend override if user configured it
+if [ -n "$GL_BACKEND" ]; then
+    gpuoptions="$gpuoptions --use-gl=$GL_BACKEND"
+fi
 
 # Modern mobile User-Agent without WebView identifiers ('wv', 'Version/4.0')
 # This allows Google Account login and prevents "Cannot login in my account" blocks
 DEFAULT_UA="Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Mobile Safari/537.36"
 CURRENT_UA="${USER_AGENT:-$DEFAULT_UA}"
+
+# Mobile-adapted start page:
+# The desktop New Tab Page (chrome://newtab) is non-responsive on mobile screens.
+# Setting a responsive start page (e.g. Google Mobile Search) provides an adapted mobile start experience.
+DEFAULT_START_PAGE="https://www.google.com"
+START_PAGE="${HOMEPAGE:-$DEFAULT_START_PAGE}"
 
 echo "Checking for Chrome binary..."
 if [ -f "./usr/lib/chromium-browser/chrome" ]; then
@@ -106,6 +126,11 @@ else
     echo "ERROR: Chrome binary not found at ./usr/lib/chromium-browser/chrome"
 fi
 
+# If launched without URL arguments, open the mobile-adapted start page
+if [ $# -eq 0 ]; then
+    set -- "$START_PAGE"
+fi
+
 initpwd=$PWD
-echo "Starting Chrome..."
-exec $initpwd/usr/lib/chromium-browser/chrome --user-agent="$CURRENT_UA" $dpioptions $gpuoptions $EXTRA_FLAGS "$@"
+echo "Starting Chrome with start page: $1"
+exec $initpwd/usr/lib/chromium-browser/chrome --homepage="$START_PAGE" --user-agent="$CURRENT_UA" $dpioptions $uioptions $gpuoptions $EXTRA_FLAGS "$@"

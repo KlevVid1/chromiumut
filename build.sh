@@ -42,16 +42,27 @@ if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
     exit 1
 fi
 
-echo "Downloading snap from $DOWNLOAD_URL..."
-curl -L -f -o "$SNAP_FILE" "$DOWNLOAD_URL"
-
-if [ -n "$EXPECTED_SIZE" ] && [ "$EXPECTED_SIZE" != "null" ]; then
-    ACTUAL_SIZE=$(stat -c%s "$SNAP_FILE" 2>/dev/null || wc -c < "$SNAP_FILE")
-    if [ "$ACTUAL_SIZE" -ne "$EXPECTED_SIZE" ]; then
-        echo "ERROR: Downloaded snap size ($ACTUAL_SIZE) does not match expected size ($EXPECTED_SIZE)." >&2
-        exit 1
+NEED_DOWNLOAD=true
+if [ -f "$SNAP_FILE" ] && [ -n "$EXPECTED_SIZE" ] && [ "$EXPECTED_SIZE" != "null" ]; then
+    CURRENT_SIZE=$(stat -c%s "$SNAP_FILE" 2>/dev/null || wc -c < "$SNAP_FILE")
+    if [ "$CURRENT_SIZE" -eq "$EXPECTED_SIZE" ]; then
+        echo "Cached snap package verified: $CURRENT_SIZE bytes."
+        NEED_DOWNLOAD=false
     fi
-    echo "Snap package integrity check: size $ACTUAL_SIZE bytes matches."
+fi
+
+if [ "$NEED_DOWNLOAD" = true ]; then
+    echo "Downloading snap from $DOWNLOAD_URL..."
+    curl -L -f -o "$SNAP_FILE" "$DOWNLOAD_URL"
+
+    if [ -n "$EXPECTED_SIZE" ] && [ "$EXPECTED_SIZE" != "null" ]; then
+        ACTUAL_SIZE=$(stat -c%s "$SNAP_FILE" 2>/dev/null || wc -c < "$SNAP_FILE")
+        if [ "$ACTUAL_SIZE" -ne "$EXPECTED_SIZE" ]; then
+            echo "ERROR: Downloaded snap size ($ACTUAL_SIZE) does not match expected size ($EXPECTED_SIZE)." >&2
+            exit 1
+        fi
+        echo "Snap package integrity check: size $ACTUAL_SIZE bytes matches."
+    fi
 fi
 
 # ========================
