@@ -1,14 +1,12 @@
 #!/bin/sh
 
 echo "========================================" 
-echo "Launcher started at $(date)"
+echo "Launcher started"
 echo "========================================"
 
-CURRENT_UID=$(id -u)
+CURRENT_UID="${UID:-32011}"
 
 # Fix display scaling conflict:
-# GDK_SCALE was previously hardcoded to 3, which caused severe coordinate offsets
-# on X11 and prevented taps on top-right buttons (3-dots menu and >> overflow) from registering.
 export GDK_SCALE=1
 export GDK_DPI_SCALE=1
 
@@ -19,12 +17,22 @@ export DISABLE_WAYLAND=1
 unset WAYLAND_DISPLAY  # Isolate from Wayland to ensure Ozone uses X11 popups cleanly
 export DCONF_PROFILE=/nonexistent
 
-# Confine user paths to writable Click app directories (avoids AppArmor denials)
+# Confine user paths and temporary socket directory to writable Click app directories (avoids AppArmor denials)
 export XDG_CONFIG_HOME="${HOME:-/home/phablet}/.config/chromiumut.shapa"
 export XDG_CACHE_HOME="${HOME:-/home/phablet}/.cache/chromiumut.shapa"
-mkdir -p "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME"
+export TMPDIR="$XDG_CACHE_HOME"
 
 export LD_LIBRARY_PATH=$PWD/lib/aarch64-linux-gnu:$LD_LIBRARY_PATH
+
+# Preload X11 popup fix:
+# In Lomiri staged/phone mode, X11 override_redirect windows (such as the 3-dots menu and dropdowns)
+# without WM_TRANSIENT_FOR are treated by Mir as new top-level application windows.
+# This caused Lomiri to animate a stage slide transition sideways and immediately dismiss the menu.
+# This library automatically marks all child/popup windows as transient for the main browser window.
+if [ -f "$PWD/lib/aarch64-linux-gnu/libx11-popup-fix.so" ]; then
+    export LD_PRELOAD="$PWD/lib/aarch64-linux-gnu/libx11-popup-fix.so${LD_PRELOAD:+:$LD_PRELOAD}"
+    echo "Loaded X11 popup fix library"
+fi
 
 # Detect Maliit socket
 if [ -S "/run/user/$CURRENT_UID/maliit" ]; then
@@ -73,7 +81,11 @@ if [ -f "$CONFIG_FILE" ]; then
     . "$CONFIG_FILE"
 fi
 
-# Scaling resolution
+# Scaling resolution:
+# On modern 1080p+ mobile displays, auto-density (2.54) cramps toolbar icons, creates an overflow '>>' chevron,
+# and pushes the 3-dots menu directly against the Lomiri right-edge gesture zone.
+# Default to scale 2.0 (or user-defined SCALE in chromiumut.conf), which ensures all toolbar buttons fit cleanly
+# and gives plenty of clearance from the edge gesture barrier.
 scale=""
 if [ -n "$SCALE" ]; then
     scale="$SCALE"
@@ -84,9 +96,15 @@ elif [ -f "./utils/get-scale.sh" ]; then
 fi
 
 if [ -z "$scale" ]; then
-    echo "Warning: scale not determined, defaulting to 2.0"
     scale="2.0"
 fi
+
+case "$scale" in
+    2.[3-9]*|[3-9]*)
+        echo "Adjusting scale from $scale to 2.0 for phone toolbar ergonomics"
+        scale="2.0"
+        ;;
+esac
 
 dpioptions="--high-dpi-support=1 --force-device-scale-factor=$scale"
 if [ -n "$GRID_UNIT_PX" ]; then
@@ -95,14 +113,16 @@ fi
 
 # UI & Touch options:
 # 1. Force Ozone to X11 so menus/popups use native X11 windows in XWayland
-# 2. Use --touch-events=auto to allow Toolbar MenuButtons to receive clicks
-# 3. Suppress first run screens with --no-first-run --no-default-browser-check
-uioptions="--ozone-platform=x11 --touch-events=auto --no-first-run --no-default-browser-check"
+# 2. Use --top-chrome-touch-ui=enabled so toolbar buttons and touch targets are easy to tap
+# 3. Use --touch-events=enabled for mobile touchscreen interaction
+# 4. Suppress first run screens with --no-first-run --no-default-browser-check
+uioptions="--ozone-platform=x11 --top-chrome-touch-ui=enabled --touch-events=enabled --no-first-run --no-default-browser-check"
 
-# Hardware Acceleration & GPU flags:
+# Hardware Acceleration & Performance flags:
 # - Use --in-process-gpu to share the existing X11 display connection and eliminate GPU crash loops / 84% CPU lag
 # - Enable GPU rasterization, zero-copy, and SkiaRenderer
-gpuoptions="--no-sandbox --test-type --in-process-gpu --ignore-gpu-blocklist --enable-gpu-rasterization --enable-zero-copy --enable-features=UseSkiaRenderer,OverlayScrollbar,kEnableQuic,OverlayScrollbarFlashAfterAnyScrollUpdate,OverlayScrollbarFlashWhenMouseEnter --enable-smooth-scrolling --disable-low-res-tiling --enable-oop-rasterization --password-store=basic"
+# - Use --num-raster-threads=2 for smooth multi-threaded rendering without core exhaustion
+gpuoptions="--no-sandbox --test-type --in-process-gpu --ignore-gpu-blocklist --enable-gpu-rasterization --enable-zero-copy --num-raster-threads=2 --enable-features=UseSkiaRenderer,OverlayScrollbar,kEnableQuic,OverlayScrollbarFlashAfterAnyScrollUpdate,OverlayScrollbarFlashWhenMouseEnter --enable-smooth-scrolling --disable-low-res-tiling --enable-oop-rasterization --password-store=basic"
 
 # Custom GL backend override if user configured it
 if [ -n "$GL_BACKEND" ]; then
@@ -115,8 +135,12 @@ DEFAULT_UA="Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 (KHTML, l
 CURRENT_UA="${USER_AGENT:-$DEFAULT_UA}"
 
 # Mobile-adapted start page:
-# If launched without URL arguments, open the single mobile-adapted start page
-DEFAULT_START_PAGE="https://www.google.com"
+# Provide a fast, offline-capable, responsive mobile start page with Google search and quick links.
+if [ -f "$PWD/assets/startpage.html" ]; then
+    DEFAULT_START_PAGE="file://$PWD/assets/startpage.html"
+else
+    DEFAULT_START_PAGE="https://www.google.com"
+fi
 START_PAGE="${HOMEPAGE:-$DEFAULT_START_PAGE}"
 
 echo "Checking for Chrome binary..."

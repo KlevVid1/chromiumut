@@ -164,6 +164,13 @@ echo "Copying maliit-input-context..."
 cp "${ROOT}/patches/maliit-inputcontext-gtk/immodules.cache" "$INSTALL_DIR/lib/aarch64-linux-gnu/gtk-3.0/3.0.0/immodules/"
 cp "${BUILD_DIR}/$WORKDIR_MALIIT/maliit-inputcontext-gtk-$VERSION/builddir/gtk3/gtk-3.0/im-maliit.so" "$INSTALL_DIR/lib/aarch64-linux-gnu/gtk-3.0/3.0.0/immodules/"
 
+echo "Building X11 popup fix library for aarch64..."
+CROSS_CC="aarch64-linux-gnu-gcc"
+if ! command -v "$CROSS_CC" >/dev/null 2>&1; then
+    CROSS_CC="gcc"
+fi
+$CROSS_CC -shared -fPIC -O2 -Wall "${ROOT}/patches/x11_popup_fix.c" -o "$INSTALL_DIR/lib/aarch64-linux-gnu/libx11-popup-fix.so" -ldl
+
 
 
 
@@ -178,6 +185,8 @@ cp "${ROOT}/utils/get-scale.sh" "$INSTALL_DIR/utils/"
 cp "${BUILD_DIR}/xdg-open/build/xdg-open" "$INSTALL_DIR/bin/"
 
 # Copy project files
+mkdir -p "$INSTALL_DIR/assets/"
+cp -r "${ROOT}/assets/"* "$INSTALL_DIR/assets/" 2>/dev/null || true
 cp "${ROOT}/launcher.sh" "$INSTALL_DIR/"
 cp "${ROOT}/chromiumut.desktop" "$INSTALL_DIR/"
 cp "${ROOT}/icon.png" "$INSTALL_DIR/"

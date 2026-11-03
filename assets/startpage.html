@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Chromium</title>
+    <style>
+        :root {
+            --bg-color: #f7f7f8;
+            --card-bg: #ffffff;
+            --text-color: #111827;
+            --text-sub: #6b7280;
+            --border-color: #e5e7eb;
+            --accent-color: #e95420; /* Ubuntu Orange */
+            --accent-hover: #d34615;
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-color: #121214;
+                --card-bg: #1c1c1f;
+                --text-color: #f3f4f6;
+                --text-sub: #9ca3af;
+                --border-color: #2e2e33;
+                --accent-color: #e95420;
+                --accent-hover: #ff6830;
+                --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+            }
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            padding: 40px 20px 20px 20px;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 28px;
+        }
+
+        .logo {
+            width: 48px;
+            height: 48px;
+        }
+
+        .title {
+            font-size: 26px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+
+        .search-container {
+            width: 100%;
+            max-width: 540px;
+            margin-bottom: 32px;
+        }
+
+        .search-form {
+            display: flex;
+            position: relative;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 28px;
+            box-shadow: var(--shadow);
+            overflow: hidden;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        .search-form:focus-within {
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 3px rgba(233, 84, 32, 0.2);
+        }
+
+        .search-input {
+            flex: 1;
+            padding: 14px 20px;
+            font-size: 16px;
+            border: none;
+            outline: none;
+            background: transparent;
+            color: var(--text-color);
+        }
+
+        .search-button {
+            background: var(--accent-color);
+            border: none;
+            padding: 0 20px;
+            color: #ffffff;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            transition: background-color 0.2s;
+        }
+
+        .search-button:hover {
+            background: var(--accent-hover);
+        }
+
+        .shortcuts-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            width: 100%;
+            max-width: 540px;
+        }
+
+        @media (max-width: 380px) {
+            .shortcuts-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+
+        .shortcut {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-decoration: none;
+            color: var(--text-color);
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 16px 8px;
+            box-shadow: var(--shadow);
+            transition: transform 0.15s, border-color 0.15s;
+        }
+
+        .shortcut:active {
+            transform: scale(0.96);
+        }
+
+        .shortcut-icon {
+            width: 32px;
+            height: 32px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            font-size: 20px;
+        }
+
+        .shortcut-label {
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-sub);
+            text-align: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 100%;
+        }
+
+        .footer {
+            margin-top: auto;
+            padding-top: 24px;
+            font-size: 12px;
+            color: var(--text-sub);
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <svg class="logo" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" stroke="#e95420" stroke-width="2"/>
+            <circle cx="12" cy="12" r="4" fill="#e95420"/>
+            <path d="M12 2a10 10 0 0 1 8.66 5H12" stroke="#e95420" stroke-width="2"/>
+            <path d="M20.66 7a10 10 0 0 1-5 13.66L12 12" stroke="#e95420" stroke-width="2"/>
+            <path d="M3.34 7l3.66 6.34L12 12" stroke="#e95420" stroke-width="2"/>
+        </svg>
+        <span class="title">Chromium</span>
+    </div>
+
+    <div class="search-container">
+        <form class="search-form" action="https://www.google.com/search" method="get">
+            <input class="search-input" type="search" name="q" placeholder="Search the web or type a URL" autofocus autocomplete="off" autocapitalize="off">
+            <button class="search-button" type="submit">Go</button>
+        </form>
+    </div>
+
+    <div class="shortcuts-grid">
+        <a class="shortcut" href="https://www.google.com">
+            <div class="shortcut-icon" style="background:#4285F4;color:#fff;">G</div>
+            <span class="shortcut-label">Google</span>
+        </a>
+        <a class="shortcut" href="https://www.youtube.com">
+            <div class="shortcut-icon" style="background:#FF0000;color:#fff;">▶</div>
+            <span class="shortcut-label">YouTube</span>
+        </a>
+        <a class="shortcut" href="https://en.m.wikipedia.org">
+            <div class="shortcut-icon" style="background:#333;color:#fff;">W</div>
+            <span class="shortcut-label">Wikipedia</span>
+        </a>
+        <a class="shortcut" href="https://github.com">
+            <div class="shortcut-icon" style="background:#24292e;color:#fff;">🐙</div>
+            <span class="shortcut-label">GitHub</span>
+        </a>
+        <a class="shortcut" href="https://open-store.io">
+            <div class="shortcut-icon" style="background:#e95420;color:#fff;">🛍</div>
+            <span class="shortcut-label">OpenStore</span>
+        </a>
+        <a class="shortcut" href="https://web.telegram.org">
+            <div class="shortcut-icon" style="background:#0088cc;color:#fff;">✈</div>
+            <span class="shortcut-label">Telegram</span>
+        </a>
+        <a class="shortcut" href="https://www.reddit.com">
+            <div class="shortcut-icon" style="background:#FF4500;color:#fff;">💬</div>
+            <span class="shortcut-label">Reddit</span>
+        </a>
+        <a class="shortcut" href="https://duckduckgo.com">
+            <div class="shortcut-icon" style="background:#DE5833;color:#fff;">🦆</div>
+            <span class="shortcut-label">DuckDuckGo</span>
+        </a>
+    </div>
+
+    <div class="footer">
+        Ubuntu Touch 24.04 &bull; Chromium Mobile Edition
+    </div>
+</body>
+</html>
+
