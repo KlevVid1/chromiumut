@@ -10,7 +10,6 @@ PROJECT_NAME="chromiumut"
 SNAP_FILE="${BUILD_DIR}/chromium-desktop.snap"
 EXTRACT_DIR="${BUILD_DIR}/squashfs-root"
 INSTALL_DIR="${BUILD_DIR}/install"
-EXPECTED_HASH=""
 
 
 # ========================
@@ -22,51 +21,71 @@ mkdir -p "$EXTRACT_DIR" "$INSTALL_DIR"
 
 
 # ========================
-# STEP 2: DOWNLOAD THE LATEST Chrome  SNAP USING SNAP
+# STEP 2: DOWNLOAD THE LATEST Chrome SNAP USING SNAP
 # ========================
-echo "[2/9] Downloading latest Chrome via snap..."
+echo "[2/9] Downloading latest Chromium via Snapcraft API..."
 mkdir -p "$EXTRACT_DIR"
 
-
-# Télécharge le snap sans l’installer globalement
-cd ${BUILD_DIR}
-DOWNLOAD_URL=$(curl -s https://api.snapcraft.io/v2/snaps/info/chromium -H "Snap-Device-Series: 16" -H "Snap-Architecture: arm64" | jq -r '.["channel-map"][] 
+cd "${BUILD_DIR}"
+SNAP_INFO=$(curl -s https://api.snapcraft.io/v2/snaps/info/chromium -H "Snap-Device-Series: 16" -H "Snap-Architecture: arm64")
+DOWNLOAD_URL=$(echo "$SNAP_INFO" | jq -r '.["channel-map"][] 
             | select(.channel.architecture=="arm64" and .channel.name=="stable") 
             | .download.url'
             )
-curl -L -o "$SNAP_FILE" "$DOWNLOAD_URL"
+EXPECTED_SIZE=$(echo "$SNAP_INFO" | jq -r '.["channel-map"][] 
+            | select(.channel.architecture=="arm64" and .channel.name=="stable") 
+            | .download.size'
+            )
+
+if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
+    echo "ERROR: Failed to fetch Chromium snap download URL from Snapcraft API." >&2
+    exit 1
+fi
+
+echo "Downloading snap from $DOWNLOAD_URL..."
+curl -L -f -o "$SNAP_FILE" "$DOWNLOAD_URL"
+
+if [ -n "$EXPECTED_SIZE" ] && [ "$EXPECTED_SIZE" != "null" ]; then
+    ACTUAL_SIZE=$(stat -c%s "$SNAP_FILE" 2>/dev/null || wc -c < "$SNAP_FILE")
+    if [ "$ACTUAL_SIZE" -ne "$EXPECTED_SIZE" ]; then
+        echo "ERROR: Downloaded snap size ($ACTUAL_SIZE) does not match expected size ($EXPECTED_SIZE)." >&2
+        exit 1
+    fi
+    echo "Snap package integrity check: size $ACTUAL_SIZE bytes matches."
+fi
+
 # ========================
 # STEP 3: EXTRACTION
 # ========================
 echo "[3/9] Extracting .snap package..."
-rm -r $EXTRACT_DIR
+rm -rf "$EXTRACT_DIR"
 echo "Extracting $SNAP_FILE to $EXTRACT_DIR"
 unsquashfs "$SNAP_FILE"
-rm $EXTRACT_DIR/usr/bin/xdg-email
+rm -f "$EXTRACT_DIR/usr/bin/xdg-email"
 
 # ===================================
 # STEP 4: BUILD THE FAKE xdg-open
 # ===================================
-echo "[4/10] Building fake xdg-open ..."
-cp -r ${ROOT}/utils/xdg-open/ ${BUILD_DIR}/
-cd ${BUILD_DIR}/xdg-open/
+echo "[4/9] Building fake xdg-open ..."
+cp -r "${ROOT}/utils/xdg-open/" "${BUILD_DIR}/"
+cd "${BUILD_DIR}/xdg-open/"
 mkdir -p build
 cd build
 cmake ..
 make
 
 # ===================================
-# STEP 4: Install DEPENDENCIES
+# STEP 5: Install DEPENDENCIES
 # ===================================
 echo "[5/9] Install dependencies..."
 
-cd ${BUILD_DIR}
+cd "${BUILD_DIR}"
 DEPENDENCIES="libhybris-utils xdotool libmaliit-glib2 libxdo3 x11-utils"
 
 for dep in $DEPENDENCIES ; do
-    apt download $dep:arm64
-    mv ${dep}_*.deb ${dep}.deb
-    rm -rvf "${dep}.deb_extract_chsdjksd" || true
+    apt download "$dep:arm64"
+    mv "${dep}_"*.deb "${dep}.deb"
+    rm -rf "${dep}.deb_extract_chsdjksd"
     mkdir "${dep}.deb_extract_chsdjksd"
     dpkg-deb -x "${dep}.deb" "${dep}.deb_extract_chsdjksd"
 done
@@ -86,7 +105,7 @@ DEBIAN_URL="https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/maliit-in
 
 
 WORKDIR_MALIIT="${PKGNAME}-${VERSION}"
-rm -rvf $WORKDIR_MALIIT/ || true
+rm -rf "$WORKDIR_MALIIT"
 mkdir -p "$WORKDIR_MALIIT"
 cd "$WORKDIR_MALIIT"
 
@@ -102,9 +121,8 @@ echo "📂 Extract debian files..."
 tar -xf "${PKGNAME}_${VERSION}.debian.tar.xz" -C "$SRC_DIR_MALIIT"
 
 echo "Apply patch..."
-cd ${BUILD_DIR}/$SRC_DIR_MALIIT/maliit-inputcontext-gtk-$VERSION/
-patch ${BUILD_DIR}/$SRC_DIR_MALIIT/maliit-inputcontext-gtk-$VERSION/gtk-input-context/client-gtk/client-imcontext-gtk.c  ${ROOT}/patches/maliit-inputcontext-gtk/client-imcontext-gtk.c.patch
-echo "${ROOT}/patches/maliit-inputcontext-gtk/client-imcontext-gtk.c.patch"
+cd "${BUILD_DIR}/$SRC_DIR_MALIIT/maliit-inputcontext-gtk-$VERSION/"
+patch -p1 < "${ROOT}/patches/maliit-inputcontext-gtk/client-imcontext-gtk.c.patch"
 
 echo "Compile..."
 EDITOR=true dpkg-source --commit . fix-keyboard
@@ -114,9 +132,8 @@ echo "[7/9] Copying files..."
 
 
 echo "Copying dependencies..."
-cd ${BUILD_DIR}
-# Copie des fichiers du dossier /lib/ de chaque paquet
-rm -rvf $INSTALL_DIR/lib
+cd "${BUILD_DIR}"
+rm -rf "$INSTALL_DIR/lib"
 mkdir -p "$INSTALL_DIR/lib/aarch64-linux-gnu/gtk-3.0/3.0.0/immodules/"
 for DIR in *_extract_chsdjksd; do
     if [ -d "$DIR/usr/lib/aarch64-linux-gnu/" ]; then
@@ -133,8 +150,8 @@ cp *_extract_chsdjksd/usr/bin/xprop "$INSTALL_DIR/bin/"
 cp *_extract_chsdjksd/usr/bin/xev "$INSTALL_DIR/bin/"
 
 echo "Copying maliit-input-context..."
-cp ${ROOT}/patches/maliit-inputcontext-gtk/immodules.cache $INSTALL_DIR/lib/aarch64-linux-gnu/gtk-3.0/3.0.0/immodules/
-cp ${BUILD_DIR}/$WORKDIR_MALIIT/maliit-inputcontext-gtk-$VERSION/builddir/gtk3/gtk-3.0/im-maliit.so $INSTALL_DIR/lib/aarch64-linux-gnu/gtk-3.0/3.0.0/immodules/
+cp "${ROOT}/patches/maliit-inputcontext-gtk/immodules.cache" "$INSTALL_DIR/lib/aarch64-linux-gnu/gtk-3.0/3.0.0/immodules/"
+cp "${BUILD_DIR}/$WORKDIR_MALIIT/maliit-inputcontext-gtk-$VERSION/builddir/gtk3/gtk-3.0/im-maliit.so" "$INSTALL_DIR/lib/aarch64-linux-gnu/gtk-3.0/3.0.0/immodules/"
 
 
 
@@ -145,29 +162,25 @@ cp -r "$EXTRACT_DIR/usr/" "$INSTALL_DIR/" || true
 
 
 mkdir -p "$INSTALL_DIR/utils/"
-cp ${ROOT}/utils/sleep.sh "$INSTALL_DIR/utils/"
-cp ${ROOT}/utils/get-scale.sh "$INSTALL_DIR/utils/"
-cp ${BUILD_DIR}/xdg-open/build/xdg-open $INSTALL_DIR/bin/
+cp "${ROOT}/utils/sleep.sh" "$INSTALL_DIR/utils/"
+cp "${ROOT}/utils/get-scale.sh" "$INSTALL_DIR/utils/"
+cp "${BUILD_DIR}/xdg-open/build/xdg-open" "$INSTALL_DIR/bin/"
 
 # Copy project files
-cp ${ROOT}/launcher.sh "$INSTALL_DIR/"
-cp ${ROOT}/chromiumut.desktop "$INSTALL_DIR/"
-cp ${ROOT}/icon.png "$INSTALL_DIR/"
-cp ${ROOT}/icon-splash.png "$INSTALL_DIR/"
-cp ${ROOT}/manifest.json "$INSTALL_DIR/"
-cp ${ROOT}/chromiumut.apparmor "$INSTALL_DIR/"
+cp "${ROOT}/launcher.sh" "$INSTALL_DIR/"
+cp "${ROOT}/chromiumut.desktop" "$INSTALL_DIR/"
+cp "${ROOT}/icon.png" "$INSTALL_DIR/"
+cp "${ROOT}/icon-splash.png" "$INSTALL_DIR/"
+cp "${ROOT}/manifest.json" "$INSTALL_DIR/"
+cp "${ROOT}/chromiumut.apparmor" "$INSTALL_DIR/"
 
-chmod +x $INSTALL_DIR/utils/sleep.sh
-chmod +x $INSTALL_DIR/utils/get-scale.sh
-chmod +x $INSTALL_DIR/launcher.sh
-chmod +x $INSTALL_DIR/usr/lib/chromium-browser/chrome
-chmod +x $INSTALL_DIR/usr/lib/chromium-browser/chrome_crashpad_handler
+chmod +x "$INSTALL_DIR/utils/sleep.sh"
+chmod +x "$INSTALL_DIR/utils/get-scale.sh"
+chmod +x "$INSTALL_DIR/launcher.sh"
+chmod +x "$INSTALL_DIR/usr/lib/chromium-browser/chrome" 2>/dev/null || true
+chmod +x "$INSTALL_DIR/usr/lib/chromium-browser/chrome_crashpad_handler" 2>/dev/null || true
 
 # ========================
-# STEP 6: BUILD THE CLICK PACKAGE
+# STEP 9: BUILD THE CLICK PACKAGE
 # ========================
-echo "[9/9] Building click package..."
-# click build "$INSTALL_DIR"
-
-echo "✅ Preparation done, building the .click package."
- 
+echo "[9/9] Preparation done, building the .click package..."

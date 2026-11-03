@@ -16,56 +16,67 @@
 '''
 import os
 import sys
-import yaml
-import re
 import subprocess
 
 
 #### Functions
 def get_lcd_density() -> int:
-  # getprop ro.sf.lcd_density
   lcd_density = None
   process = None
   try:
-    # Start the QML process, capturing stdout
     process = subprocess.Popen(
         ["getprop", "ro.sf.lcd_density"],
         stdout=subprocess.PIPE,
-        text=True,  # Decode output as text
-        bufsize=1,  # Line-buffered output
-        universal_newlines=True # Ensure consistent newline handling
+        stderr=subprocess.DEVNULL,
+        text=True,
+        bufsize=1,
+        universal_newlines=True
     )
-    lcd_density = int(process.stdout.readline().strip())
+    line = process.stdout.readline().strip()
+    if line.isdigit():
+      lcd_density = int(line)
+    else:
+      lcd_density = 0
 
-  except Exception as e:
-    print(f"An error occurred: {e}", file=sys.stderr)
+  except Exception:
     return 0
   finally:
-    if process and process.poll() is None:  # Check if the process is still running
-        print("Killing process...", file=sys.stderr)
-        process.terminate()  # Send a terminate chromme
+    if process and process.poll() is None:
+        process.terminate()
         try:
-          process.wait(timeout=5)  # Wait for the process to terminate
+          process.wait(timeout=2)
         except subprocess.TimeoutExpired:
-          print("Process did not terminate gracefully, killing it.", file=sys.stderr)
-          process.kill()  # Force kill if termination fails
+          process.kill()
   
-  return lcd_density
+  return lcd_density or 0
 
-def scalingdevidor(GRID_PX : int = int(os.environ["GRID_UNIT_PX"])) -> int: 
-  if GRID_PX >= 21: # seems to be what most need if above or at 21 grid px
+def scalingdevidor(grid_px: float) -> int: 
+  if grid_px >= 21:
     return 8
-  elif GRID_PX <= 16: # this one i know because my phone is 16 so if it seems weird don't worry it works.
+  elif grid_px <= 16:
     return 12
-  else: # throw in the dark but lets hope it works
+  else:
     return 10
 
 
-#### GLOBAL VARIABLES
-scaling = 2
-if get_lcd_density() == 0:
-  scaling = str(round(1.05*float(os.environ["GRID_UNIT_PX"])/scalingdevidor(),2)) 
-else:
-  scaling = str(round(float(get_lcd_density()/173),2))
+def main():
+  try:
+    grid_px_str = os.environ.get("GRID_UNIT_PX", "").strip()
+    grid_px = float(grid_px_str) if grid_px_str else 18.0
+  except ValueError:
+    grid_px = 18.0
 
-print(scaling)
+  lcd_density = get_lcd_density()
+  if lcd_density == 0:
+    scaling = round(1.05 * grid_px / scalingdevidor(grid_px), 2)
+  else:
+    scaling = round(float(lcd_density) / 173.0, 2)
+
+  # Fallback check
+  if scaling <= 0:
+    scaling = 2.0
+
+  print(scaling)
+
+if __name__ == "__main__":
+  main()
