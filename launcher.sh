@@ -18,8 +18,11 @@ export GDK_BACKEND=x11
 export DISABLE_WAYLAND=1 
 unset WAYLAND_DISPLAY  # Isolate from Wayland to ensure Ozone uses X11 popups cleanly
 export DCONF_PROFILE=/nonexistent
+
+# Confine user paths to writable Click app directories (avoids AppArmor denials)
 export XDG_CONFIG_HOME="${HOME:-/home/phablet}/.config/chromiumut.shapa"
-mkdir -p "$XDG_CONFIG_HOME"
+export XDG_CACHE_HOME="${HOME:-/home/phablet}/.cache/chromiumut.shapa"
+mkdir -p "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME"
 
 export LD_LIBRARY_PATH=$PWD/lib/aarch64-linux-gnu:$LD_LIBRARY_PATH
 
@@ -90,18 +93,16 @@ if [ -n "$GRID_UNIT_PX" ]; then
     dpioptions="$dpioptions --grid-unit-px=$GRID_UNIT_PX"
 fi
 
-# UI & Touch fixes:
+# UI & Touch options:
 # 1. Force Ozone to X11 so menus/popups use native X11 windows in XWayland
-# 2. Use --touch-events=auto instead of forcing enabled (forcing enabled breaks MenuButton/toolbar clicks)
+# 2. Use --touch-events=auto to allow Toolbar MenuButtons to receive clicks
 # 3. Suppress first run screens with --no-first-run --no-default-browser-check
 uioptions="--ozone-platform=x11 --touch-events=auto --no-first-run --no-default-browser-check"
 
 # Hardware Acceleration & GPU flags:
-# - Do NOT force --use-gl=egl on X11, as direct EGL creation on X11 windows fails on mobile drivers
-#   and forces a fallback to SwiftShader (CPU rendering). Letting Chromium auto-negotiate or use ANGLE
-#   enables real hardware acceleration on Mesa/libhybris.
-# - Force-enable GPU rasterization, zero-copy, and native GPU memory buffers.
-gpuoptions="--no-sandbox --test-type --ignore-gpu-blocklist --enable-gpu-rasterization --enable-zero-copy --enable-native-gpu-memory-buffers --enable-features=UseSkiaRenderer,CanvasOopRasterization,AcceleratedVideoDecodeLinuxGL,AcceleratedVideoDecodeLinuxZeroCopyGL,AcceleratedVideoEncoder,OverlayScrollbar,kEnableQuic,OverlayScrollbarFlashAfterAnyScrollUpdate,OverlayScrollbarFlashWhenMouseEnter --enable-smooth-scrolling --disable-low-res-tiling --enable-oop-rasterization --password-store=basic"
+# - Use --in-process-gpu to share the existing X11 display connection and eliminate GPU crash loops / 84% CPU lag
+# - Enable GPU rasterization, zero-copy, and SkiaRenderer
+gpuoptions="--no-sandbox --test-type --in-process-gpu --ignore-gpu-blocklist --enable-gpu-rasterization --enable-zero-copy --enable-features=UseSkiaRenderer,OverlayScrollbar,kEnableQuic,OverlayScrollbarFlashAfterAnyScrollUpdate,OverlayScrollbarFlashWhenMouseEnter --enable-smooth-scrolling --disable-low-res-tiling --enable-oop-rasterization --password-store=basic"
 
 # Custom GL backend override if user configured it
 if [ -n "$GL_BACKEND" ]; then
@@ -114,8 +115,7 @@ DEFAULT_UA="Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 (KHTML, l
 CURRENT_UA="${USER_AGENT:-$DEFAULT_UA}"
 
 # Mobile-adapted start page:
-# The desktop New Tab Page (chrome://newtab) is non-responsive on mobile screens.
-# Setting a responsive start page (e.g. Google Mobile Search) provides an adapted mobile start experience.
+# If launched without URL arguments, open the single mobile-adapted start page
 DEFAULT_START_PAGE="https://www.google.com"
 START_PAGE="${HOMEPAGE:-$DEFAULT_START_PAGE}"
 
@@ -126,11 +126,10 @@ else
     echo "ERROR: Chrome binary not found at ./usr/lib/chromium-browser/chrome"
 fi
 
-# If launched without URL arguments, open the mobile-adapted start page
 if [ $# -eq 0 ]; then
     set -- "$START_PAGE"
 fi
 
 initpwd=$PWD
-echo "Starting Chrome with start page: $1"
-exec $initpwd/usr/lib/chromium-browser/chrome --homepage="$START_PAGE" --user-agent="$CURRENT_UA" $dpioptions $uioptions $gpuoptions $EXTRA_FLAGS "$@"
+echo "Starting Chrome with: $1"
+exec $initpwd/usr/lib/chromium-browser/chrome --user-agent="$CURRENT_UA" $dpioptions $uioptions $gpuoptions $EXTRA_FLAGS "$@"
